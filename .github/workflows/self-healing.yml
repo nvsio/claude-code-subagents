@@ -1,6 +1,15 @@
 name: Self-Healing Repository
 
 on:
+  # Run on every push to main
+  push:
+    branches: [ main ]
+  
+  # Run on every PR that targets main
+  pull_request:
+    branches: [ main ]
+    types: [opened, synchronize, reopened]
+  
   # Manual trigger for testing
   workflow_dispatch:
     inputs:
@@ -40,6 +49,7 @@ jobs:
             Use the repo-updater agent to maintain the claude-code-subagents repository.
             
             Mode: ${{ github.event.inputs.mode || 'light' }}
+            Context: ${{ github.event_name }}
             
             For light mode:
             - Quick validation only
