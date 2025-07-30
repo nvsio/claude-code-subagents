@@ -30,79 +30,178 @@ on:
 jobs:
   repo-maintenance:
     runs-on: ubuntu-latest
-    permissions:
-      contents: write
-      pull-requests: write
-      id-token: write
+    # Skip workflow runs on automated commits to prevent loops
+    if: |
+      !contains(github.event.head_commit.message, 'automated repository maintenance') &&
+      !contains(github.event.head_commit.message, '🤖 Generated with Claude Code')
     
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
+          # Use a GitHub App or PAT to allow PR creation
+          token: ${{ secrets.GITHUB_TOKEN }}
       
-      - name: Run Repo-Updater Agent
-        uses: anthropics/claude-code-action@beta
+      - name: Set maintenance mode
+        id: mode
+        run: |
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+            echo "mode=${{ github.event.inputs.mode }}" >> $GITHUB_OUTPUT
+          elif [[ "${{ github.event_name }}" == "schedule" ]]; then
+            echo "mode=standard" >> $GITHUB_OUTPUT
+          else
+            echo "mode=light" >> $GITHUB_OUTPUT
+          fi
+          echo "Selected mode: $(cat $GITHUB_OUTPUT | grep mode)"
+      
+      - name: Run Claude Code Repo-Updater
+        uses: anthropics/claude-code-base-action@beta
+        id: claude
         with:
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
-          timeout_minutes: 10
-          direct_prompt: |
-            Use the repo-updater agent to maintain the claude-code-subagents repository.
+          prompt: |
+            You are running as the repo-updater agent for the claude-code-subagents repository.
             
-            Mode: ${{ github.event.inputs.mode || 'light' }}
-            Context: ${{ github.event_name }}
+            Repository path: ${{ github.workspace }}
+            Maintenance mode: ${{ steps.mode.outputs.mode }}
+            Trigger: ${{ github.event_name }}
             
-            For light mode:
-            - Quick validation only
-            - Check sync between markdown and JSON
-            - Exit early if no issues
+            Your task is to maintain the health of this repository by:
             
-            For standard mode:
-            - Full validation and sync
-            - Fix any issues found
-            - Update configurations as needed
+            For LIGHT mode (quick validation - 2-3 minutes max):
+            1. Check if .claude/agents.json is in sync with all markdown files in .claude/agents/
+            2. Validate basic JSON syntax
+            3. Report any critical errors found
+            4. Exit immediately if everything is valid
             
-            For deep mode:
-            - Everything in standard mode
-            - Analyze patterns and suggest improvements
-            - Generate comprehensive report
+            For STANDARD mode (full maintenance - 5-10 minutes):
+            1. Everything from light mode
+            2. Fix any sync issues between markdown and JSON
+            3. Validate all agent configurations against schema
+            4. Update any outdated agent metadata
+            5. Fix formatting inconsistencies
             
-            Be efficient and only make necessary changes.
-          allowed_tools: "Task,Read,Write,MultiEdit,Glob,Grep,LS"
+            For DEEP mode (comprehensive analysis - 15-20 minutes):
+            1. Everything from standard mode
+            2. Analyze agent usage patterns
+            3. Suggest agent consolidations if overlap detected
+            4. Identify missing capabilities
+            5. Generate a comprehensive health report
+            6. Optimize agent configurations
+            
+            IMPORTANT:
+            - Only make changes if there are actual issues
+            - Do not make cosmetic changes
+            - Be efficient with API usage
+            - Exit early if no issues in light mode
+            - Create clear commit messages if changes are made
+            
+            Output a summary of what was checked and any changes made.
+          allowed_tools: "Task,Read,Write,MultiEdit,Glob,Grep,LS,Bash"
+          max_turns: "${{ steps.mode.outputs.mode == 'deep' && '20' || steps.mode.outputs.mode == 'standard' && '15' || '10' }}"
+          timeout_minutes: "${{ steps.mode.outputs.mode == 'deep' && '20' || steps.mode.outputs.mode == 'standard' && '10' || '5' }}"
       
       - name: Check for changes
         id: changes
         run: |
           if [[ -n $(git status --porcelain) ]]; then
             echo "has_changes=true" >> $GITHUB_OUTPUT
+            echo "change_count=$(git status --porcelain | wc -l)" >> $GITHUB_OUTPUT
+            echo "📝 Changes detected:"
+            git status --short
           else
             echo "has_changes=false" >> $GITHUB_OUTPUT
+            echo "change_count=0" >> $GITHUB_OUTPUT
             echo "✅ No changes needed - repository is healthy!"
           fi
       
       - name: Create Pull Request
-        if: steps.changes.outputs.has_changes == 'true'
+        if: steps.changes.outputs.has_changes == 'true' && github.event_name != 'pull_request'
         uses: peter-evans/create-pull-request@v6
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
           commit-message: |
-            fix: automated repository maintenance
+            fix: automated repository maintenance (${{ steps.mode.outputs.mode }} mode)
+            
+            Maintenance mode: ${{ steps.mode.outputs.mode }}
+            Files changed: ${{ steps.changes.outputs.change_count }}
             
             🤖 Generated with Claude Code
             
             Co-Authored-By: Claude <noreply@anthropic.com>
-          branch: auto/repo-maintenance-${{ github.run_number }}
+          branch: auto/maintenance-${{ steps.mode.outputs.mode }}-${{ github.run_number }}
           delete-branch: true
-          title: "🔧 Automated Repository Maintenance"
+          title: "🔧 [${{ steps.mode.outputs.mode }}] Automated Repository Maintenance"
           body: |
-            ## Automated Maintenance
+            ## 🤖 Automated Repository Maintenance
             
-            The repo-updater agent found and fixed issues in the repository.
-            
-            **Mode**: ${{ github.event.inputs.mode || 'light' }}
+            **Maintenance Mode**: ${{ steps.mode.outputs.mode }}
+            **Triggered by**: ${{ github.event_name }}
+            **Files Changed**: ${{ steps.changes.outputs.change_count }}
             **Workflow Run**: [#${{ github.run_number }}](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})
             
-            Please review the changes before merging.
+            ### Maintenance Summary
+            ```
+            ${{ steps.claude.outputs.summary || 'See workflow logs for details.' }}
+            ```
+            
+            ### What was checked
+            ${{ steps.mode.outputs.mode == 'light' && '✅ Quick validation only - JSON/Markdown sync' || '' }}
+            ${{ steps.mode.outputs.mode == 'standard' && '🔧 Full maintenance - sync, validation, and fixes' || '' }}
+            ${{ steps.mode.outputs.mode == 'deep' && '🔍 Deep analysis - optimization and improvements' || '' }}
+            
+            ### Review checklist
+            - [ ] Changes are necessary and improve the repository
+            - [ ] No breaking changes introduced
+            - [ ] Agent configurations remain valid
+            
+            ---
+            *Generated by claude-code-subagents self-healing system v1.0*
           labels: |
             automated
             maintenance
+            ${{ steps.mode.outputs.mode }}-mode
+          reviewers: nvsio
+      
+      - name: Comment on PR
+        if: steps.changes.outputs.has_changes == 'true' && github.event_name == 'pull_request'
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: `## 🔧 Repository Maintenance Check
+            
+            I found some issues that need attention:
+            
+            \`\`\`
+            ${{ steps.claude.outputs.summary || 'Changes needed - see workflow logs.' }}
+            \`\`\`
+            
+            **Files that need updates**: ${{ steps.changes.outputs.change_count }}
+            
+            Please run the workflow manually or merge the automated PR to fix these issues.`
+            })
+      
+      - name: Job Summary
+        if: always()
+        run: |
+          echo "## Self-Healing Workflow Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "- **Mode**: ${{ steps.mode.outputs.mode }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Changes Made**: ${{ steps.changes.outputs.has_changes }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Files Modified**: ${{ steps.changes.outputs.change_count || '0' }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Trigger**: ${{ github.event_name }}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          if [[ "${{ steps.changes.outputs.has_changes }}" == "true" ]]; then
+            echo "### Changes Made" >> $GITHUB_STEP_SUMMARY
+            echo '```' >> $GITHUB_STEP_SUMMARY
+            git diff --stat >> $GITHUB_STEP_SUMMARY
+            echo '```' >> $GITHUB_STEP_SUMMARY
+          else
+            echo "✅ Repository is healthy - no changes needed!" >> $GITHUB_STEP_SUMMARY
+          fi
