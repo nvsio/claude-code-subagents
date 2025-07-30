@@ -17,6 +17,9 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
         
       - name: Generate CLO Agent
         env:
@@ -86,15 +89,39 @@ jobs:
             mv temp.json .claude/agents.json
           fi
           
-      - name: Create PR
-        uses: peter-evans/create-pull-request@v6
+      - name: Create Branch and Push
+        run: |
+          BRANCH_NAME="agent/clo-${{ github.event.issue.number }}"
+          
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          
+          # Ensure we're on main first
+          git checkout main
+          git pull origin main
+          
+          # Create and checkout new branch
+          git checkout -b "$BRANCH_NAME"
+          
+          # Stage and commit changes
+          git add .claude/agents/
+          git commit -m "feat: add CLO agent for learning optimization
+          
+          Requested in #${{ github.event.issue.number }}"
+          
+          # Push the branch
+          git push origin "$BRANCH_NAME"
+          
+      - name: Comment on Issue with PR Link
+        uses: actions/github-script@v7
         with:
-          token: ${{ secrets.GITHUB_TOKEN }}
-          commit-message: "feat: add CLO agent for learning optimization"
-          branch: agent/clo-${{ github.event.issue.number }}
-          title: "✨ Add CLO Agent (Chief Learning Officer)"
-          body: |
-            Adds the CLO agent requested in #${{ github.event.issue.number }}
+          script: |
+            const branchName = `agent/clo-${{ github.event.issue.number }}`;
+            const prUrl = `https://github.com/${{ github.repository }}/compare/main...${branchName}?quick_pull=1`;
             
-            The CLO agent helps teams build strong learning cultures and documentation practices.
-          labels: agent, enhancement
+            await github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: `## 🎉 Agent Created!\n\nI've created the CLO agent on branch \`${branchName}\`.\n\n[**Click here to create the Pull Request**](${prUrl})\n\nThe PR will add:\n- 📄 \`.claude/agents/clo-agent.md\`\n- 📝 Updated \`.claude/agents.json\`\n\nJust click the link above and then click "Create pull request"!`
+            });
