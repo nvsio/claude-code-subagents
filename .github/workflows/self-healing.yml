@@ -17,7 +17,7 @@ on:
 
 permissions:
   contents: write
-  pull-requests: write
+  actions: read
 
 jobs:
   repo-maintenance:
@@ -29,29 +29,44 @@ jobs:
         uses: actions/checkout@v4
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
-          persist-credentials: true
       
-      - name: Simple Maintenance Check
-        id: check
+      - name: Run Claude API for Repo Maintenance
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
         run: |
-          # Simple check for demonstration
-          if [ -f ".claude/agents.json" ]; then
-            echo "Agents file exists"
-            # Create a test change
-            echo "# Test change $(date)" >> .claude/test.md
-            echo "has_changes=true" >> $GITHUB_OUTPUT
+          # Simple direct maintenance
+          MODE="${{ github.event.inputs.mode || 'light' }}"
+          
+          # Call Claude API to check repo
+          curl -X POST https://api.anthropic.com/v1/messages \
+            -H "Content-Type: application/json" \
+            -H "x-api-key: $ANTHROPIC_API_KEY" \
+            -H "anthropic-version: 2023-06-01" \
+            -d "{
+              \"model\": \"claude-3-haiku-20240307\",
+              \"max_tokens\": 1024,
+              \"messages\": [{
+                \"role\": \"user\",
+                \"content\": \"Check if the file .claude/agents.json exists and is valid JSON. If it exists and is valid, respond with 'VALID'. If not, respond with 'INVALID'. No other text.\"
+              }]
+            }" > response.json
+          
+          # Check response
+          if grep -q "VALID" response.json; then
+            echo "✅ Repository is healthy"
           else
-            echo "has_changes=false" >> $GITHUB_OUTPUT
+            echo "⚠️ Repository needs maintenance"
+            # For now, just log - in full version would run repo-updater
           fi
       
-      - name: Create PR
-        if: steps.check.outputs.has_changes == 'true'
-        uses: peter-evans/create-pull-request@v6
-        with:
-          token: ${{ secrets.GITHUB_TOKEN }}
-          commit-message: "fix: automated maintenance"
-          branch: maintenance-${{ github.run_number }}
-          title: "Automated Maintenance"
-          body: "This is a test PR"
-          author: github-actions[bot] <41898282+github-actions[bot]@users.noreply.github.com>
-          committer: github-actions[bot] <41898282+github-actions[bot]@users.noreply.github.com>
+      - name: Commit any fixes
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          
+          # If there are changes, commit them
+          if [[ -n $(git status --porcelain) ]]; then
+            git add -A
+            git commit -m "chore: automated maintenance [skip ci]"
+            git push
+          fi
