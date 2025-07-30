@@ -1,0 +1,170 @@
+name: Agent Quality Check
+
+on:
+  pull_request:
+    paths:
+      - '.claude/agents/*.md'
+
+permissions:
+  pull-requests: write
+  contents: read
+
+jobs:
+  quality-review:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout PR
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          
+      - name: Analyze Agent Quality
+        id: quality
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: |
+          # Get the new/modified agent files
+          git diff --name-only origin/main..HEAD | grep ".claude/agents/" > changed_agents.txt || true
+          
+          # For each agent, run quality checks
+          cat > check_quality.py << 'EOF'
+          import os
+          import re
+          import json
+          
+          quality_score = 100
+          issues = []
+          suggestions = []
+          
+          # Read agent files
+          with open('changed_agents.txt', 'r') as f:
+              agent_files = f.read().strip().split('\n')
+          
+          for agent_file in agent_files:
+              if not agent_file:
+                  continue
+                  
+              with open(agent_file, 'r') as f:
+                  content = f.read()
+              
+              # Check for required sections
+              required_sections = ['Description', 'Type', 'Tools', 'Purpose', 'When to Use', 'Example Usage']
+              for section in required_sections:
+                  if f'## {section}' not in content:
+                      issues.append(f"Missing required section: {section}")
+                      quality_score -= 10
+              
+              # Check for self-improvement section
+              if 'self-improv' not in content.lower():
+                  suggestions.append("Consider adding a Self-Improvement section")
+                  quality_score -= 5
+              
+              # Check example quality
+              example_count = content.count('@agent-')
+              if example_count < 3:
+                  suggestions.append("Add more usage examples (found {example_count}, recommend 3+)")
+                  quality_score -= 5
+              
+              # Check description length
+              desc_match = re.search(r'## Description\n(.+?)\n', content)
+              if desc_match and len(desc_match.group(1)) < 50:
+                  suggestions.append("Description seems too short - make it more compelling")
+                  quality_score -= 5
+              
+              # Check for personality
+              personality_keywords = ['help', 'assist', 'analyze', 'improve', 'optimize', 'ensure']
+              if not any(keyword in content.lower() for keyword in personality_keywords):
+                  suggestions.append("Agent lacks clear personality/purpose keywords")
+                  quality_score -= 5
+          
+          # Output results
+          print(f"QUALITY_SCORE={quality_score}")
+          print(f"ISSUES={json.dumps(issues)}")
+          print(f"SUGGESTIONS={json.dumps(suggestions)}")
+          
+          # Save for next step
+          with open('quality_report.json', 'w') as f:
+              json.dump({
+                  'score': quality_score,
+                  'issues': issues,
+                  'suggestions': suggestions
+              }, f)
+          EOF
+          
+          python check_quality.py
+          
+      - name: Post Quality Review
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const report = JSON.parse(fs.readFileSync('quality_report.json', 'utf8'));
+            
+            let emoji = '✅';
+            let status = 'Excellent';
+            
+            if (report.score < 60) {
+              emoji = '❌';
+              status = 'Needs Work';
+            } else if (report.score < 80) {
+              emoji = '⚠️';
+              status = 'Good with Suggestions';
+            }
+            
+            let comment = `## ${emoji} Agent Quality Review
+            
+            **Status**: ${status}
+            **Quality Score**: ${report.score}/100
+            
+            `;
+            
+            if (report.issues.length > 0) {
+              comment += `### ❌ Issues to Fix\n`;
+              report.issues.forEach(issue => {
+                comment += `- ${issue}\n`;
+              });
+              comment += '\n';
+            }
+            
+            if (report.suggestions.length > 0) {
+              comment += `### 💡 Suggestions for Improvement\n`;
+              report.suggestions.forEach(suggestion => {
+                comment += `- ${suggestion}\n`;
+              });
+              comment += '\n';
+            }
+            
+            if (report.score >= 90) {
+              comment += `### 🌟 Great Job!\n\nThis agent meets our high quality standards. The implementation is thorough and well-documented.\n`;
+            }
+            
+            comment += `\n### 📋 Quality Checklist\n`;
+            comment += `- [${report.score >= 70 ? 'x' : ' '}] Has all required sections\n`;
+            comment += `- [${report.score >= 80 ? 'x' : ' '}] Includes self-improvement mechanisms\n`;
+            comment += `- [${report.score >= 85 ? 'x' : ' '}] Has comprehensive examples\n`;
+            comment += `- [${report.score >= 90 ? 'x' : ' '}] Clear personality and purpose\n`;
+            
+            await github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: comment
+            });
+            
+            // Add appropriate labels
+            if (report.score >= 80) {
+              await github.rest.issues.addLabels({
+                issue_number: context.issue.number,
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                labels: ['quality-approved']
+              });
+            } else {
+              await github.rest.issues.addLabels({
+                issue_number: context.issue.number,
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                labels: ['needs-improvement']
+              });
+            }
