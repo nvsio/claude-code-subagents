@@ -1,0 +1,59 @@
+name: self-heal
+
+on:
+  push:
+    branches: [ main ]
+  schedule:
+    - cron: '0 */6 * * *'  # Every 6 hours
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  heal:
+    runs-on: ubuntu-latest
+    if: github.actor != 'github-actions[bot]'
+    
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Fix Repository Structure
+        run: |
+          # Create required directories
+          mkdir -p .claude/agents
+          
+          # Create agents.json if missing
+          if [ ! -f .claude/agents.json ]; then
+            echo '{"agents": []}' > .claude/agents.json
+          fi
+          
+          # Sync agents
+          python3 << 'EOF'
+import json
+import os
+from pathlib import Path
+
+# Read agents from markdown files
+agents = []
+for md_file in Path(".claude/agents").glob("*.md"):
+    agents.append({
+        "name": md_file.stem,
+        "file": f".claude/agents/{md_file.name}"
+    })
+
+# Update agents.json
+with open(".claude/agents.json", "w") as f:
+    json.dump({"agents": agents}, f, indent=2)
+
+print(f"✅ Synced {len(agents)} agents")
+EOF
+      
+      - name: Create PR if needed
+        uses: peter-evans/create-pull-request@v6
+        with:
+          commit-message: "fix: sync agents"
+          title: "🔧 Self-heal: Sync agents"
+          body: "Automated sync of agent configurations"
+          branch: auto/heal-${{ github.run_number }}

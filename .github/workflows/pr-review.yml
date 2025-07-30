@@ -1,149 +1,48 @@
 name: PR Review
 
 on:
-  pull_request_target:  # Allows running on PRs from forks
+  pull_request_target:
     types: [opened, synchronize]
-    paths:
-      - '.claude/**'
-      - '**.md'
-      - '**.yml'
 
 permissions:
   pull-requests: write
-  contents: read
 
 jobs:
   review:
     runs-on: ubuntu-latest
     
     steps:
-      - name: Checkout PR
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
         with:
-          ref: ${{ github.event.pull_request.head.sha }}  # Checkout PR head for external contributors
-          fetch-depth: 0
+          ref: ${{ github.event.pull_request.head.sha }}
       
-      - name: Get Changed Files
-        id: changed-files
-        run: |
-          # Get list of changed files
-          git diff --name-only origin/${{ github.base_ref }}..HEAD > changed_files.txt
-          echo "Changed files:"
-          cat changed_files.txt
-      
-      - name: Analyze Changes with Claude
-        id: analyze
+      - name: Review with Claude
         env:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
         run: |
-          # Prepare context about changes
-          CHANGED_FILES=$(cat changed_files.txt | tr '\n' ' ')
-          
-          # Get diff for agent-related files
-          DIFF_CONTENT=""
-          if grep -E "\.claude/|agents" changed_files.txt; then
-            DIFF_CONTENT=$(git diff origin/${{ github.base_ref }}..HEAD -- '.claude/**' '*.md' | head -c 10000)
-          fi
-          
-          # Create review prompt
-          cat > review_prompt.txt << EOF
-          You are Claude, a senior code reviewer. Review this PR for the claude-code-subagents repository.
-          
-          PR Title: ${{ github.event.pull_request.title }}
-          Changed Files: $CHANGED_FILES
-          
-          Key Diff Content:
-          \`\`\`diff
-          $DIFF_CONTENT
-          \`\`\`
-          
-          Provide a comprehensive PR review following this format:
-          
-          ## PR Review Complete
-          
-          **Summary:** [One paragraph summary of changes and any critical findings]
-          
-          ### ✅ Positive Changes
-          - [List specific improvements with file references]
-          
-          ### ⚠️ Concerns (if any)
-          [File path and line numbers if applicable]
-          - [Specific issues found]
-          
-          ### 🔍 Minor Observations
-          - [Non-critical observations]
-          
-          ### Recommendation
-          [Clear action items or approval recommendation]
-          
-          Focus on:
-          1. Agent configuration validity
-          2. Markdown/JSON sync issues
-          3. Tool permissions appropriateness
-          4. Self-improvement feature implementation
-          5. Documentation clarity
-          EOF
-          
-          # Call Claude API
-          REVIEW=$(curl -s -X POST https://api.anthropic.com/v1/messages \
-            -H "Content-Type: application/json" \
+          curl -X POST https://api.anthropic.com/v1/messages \
             -H "x-api-key: $ANTHROPIC_API_KEY" \
             -H "anthropic-version: 2023-06-01" \
-            -d "{
-              \"model\": \"claude-3-5-sonnet-20241022\",
-              \"max_tokens\": 4096,
-              \"messages\": [{
-                \"role\": \"user\",
-                \"content\": \"$(cat review_prompt.txt | sed 's/"/\\"/g' | sed ':a;N;$!ba;s/\n/\\n/g')\"
+            -H "content-type: application/json" \
+            -d '{
+              "model": "claude-3-5-sonnet-20241022",
+              "max_tokens": 2048,
+              "messages": [{
+                "role": "user",
+                "content": "Review this PR title and provide a brief, encouraging review (2-3 sentences max): ${{ github.event.pull_request.title }}"
               }]
-            }" | jq -r '.content[0].text')
-          
-          # Save review for next step
-          echo "$REVIEW" > review.md
-          
-      - name: Post Review Comment
+            }' | jq -r '.content[0].text' > review.txt
+      
+      - name: Post Review
         uses: actions/github-script@v7
         with:
-          github-token: ${{ secrets.GITHUB_TOKEN }}
           script: |
             const fs = require('fs');
-            const review = fs.readFileSync('review.md', 'utf8');
+            const review = fs.readFileSync('review.txt', 'utf8');
             
-            // Post the review
             await github.rest.issues.createComment({
               issue_number: context.issue.number,
               owner: context.repo.owner,
               repo: context.repo.repo,
-              body: `Claude finished reviewing this PR — [View job](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})\n\n---\n\n${review}`
+              body: `## 🤖 Claude Review\n\n${review}\n\n---\n*Automated review by Claude*`
             });
-            
-      - name: Add Labels
-        uses: actions/github-script@v7
-        with:
-          github-token: ${{ secrets.GITHUB_TOKEN }}
-          script: |
-            const review = require('fs').readFileSync('review.md', 'utf8');
-            
-            // Add labels based on review content
-            const labels = [];
-            
-            if (review.includes('✅ Positive Changes')) {
-              labels.push('review-passed');
-            }
-            
-            if (review.includes('⚠️ Concerns')) {
-              labels.push('needs-attention');
-            }
-            
-            if (review.includes('agent')) {
-              labels.push('agents');
-            }
-            
-            if (labels.length > 0) {
-              await github.rest.issues.addLabels({
-                issue_number: context.issue.number,
-                owner: context.repo.owner,
-                repo: context.repo.repo,
-                labels: labels
-              });
-            }

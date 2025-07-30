@@ -4,10 +4,10 @@
 
 > self-improving ai agents that actually work™
 
-[![self-heal](https://github.com/nvsio/claude-code-subagents/actions/workflows/self-healing.yml/badge.svg)](https://github.com/nvsio/claude-code-subagents/actions/workflows/self-healing.yml)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](http://makeapullrequest.com)
-[![Claude](https://img.shields.io/badge/Powered%20by-Claude-orange)](https://claude.ai)
+[![self-heal](https://img.shields.io/github/actions/workflow/status/nvsio/claude-code-subagents/self-healing.yml?branch=main&style=flat-square&logo=data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMzIiIGhlaWdodD0iMzIiIHZpZXdCb3g9IjAgMCAzMiAzMiIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KICA8cmVjdCB3aWR0aD0iMzIiIGhlaWdodD0iMzIiIHJ4PSI4IiBmaWxsPSIjRTA3QjUzIi8+CiAgPHJlY3QgeD0iMTYiIHdpZHRoPSIxNiIgaGVpZ2h0PSIzMiIgcng9IjgiIGZpbGw9IiMzQzNDM0MiLz4KICA8cGF0aCBkPSJNMTEgMTZDMTEgMTYgMTYgMTEgMTYgNiIgc3Ryb2tlPSIjN0ZBMDhFIiBzdHJva2Utd2lkdGg9IjMiIHN0cm9rZS1saW5lY2FwPSJyb3VuZCIvPgogIDxwYXRoIGQ9Ik0yMSAxNkMyMSAxNiAxNiAyMSAxNiAyNiIgc3Ryb2tlPSIjN0ZBMDhFIiBzdHJva2Utd2lkdGg9IjMiIHN0cm9rZS1saW5lY2FwPSJyb3VuZCIvPgogIDxwYXRoIGQ9Ik04IDE2TDI0IDE2IiBzdHJva2U9IiNGRkZGRkYiIHN0cm9rZS13aWR0aD0iMiIgc3Ryb2tlLWxpbmVjYXA9InJvdW5kIi8+CiAgPGNpcmNsZSBjeD0iMTYiIGN5PSIxNiIgcj0iMiIgZmlsbD0iI0ZGRkZGRiIvPgo8L3N2Zz4=&label=self-heal)](https://github.com/nvsio/claude-code-subagents/actions/workflows/self-healing.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg?style=flat-square)](https://opensource.org/licenses/MIT)
+[![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg?style=flat-square)](http://makeapullrequest.com)
+[![Claude](https://img.shields.io/badge/Powered%20by-Claude-orange?style=flat-square&logo=data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMzIiIGhlaWdodD0iMzIiIHZpZXdCb3g9IjAgMCAzMiAzMiIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KICA8cmVjdCB3aWR0aD0iMzIiIGhlaWdodD0iMzIiIHJ4PSI4IiBmaWxsPSIjRTA3QjUzIi8+CiAgPHJlY3QgeD0iMTYiIHdpZHRoPSIxNiIgaGVpZ2h0PSIzMiIgcng9IjgiIGZpbGw9IiMzQzNDM0MiLz4KICA8cGF0aCBkPSJNMTEgMTZDMTEgMTYgMTYgMTEgMTYgNiIgc3Ryb2tlPSIjN0ZBMDhFIiBzdHJva2Utd2lkdGg9IjMiIHN0cm9rZS1saW5lY2FwPSJyb3VuZCIvPgogIDxwYXRoIGQ9Ik0yMSAxNkMyMSAxNiAxNiAyMSAxNiAyNiIgc3Ryb2tlPSIjN0ZBMDhFIiBzdHJva2Utd2lkdGg9IjMiIHN0cm9rZS1saW5lY2FwPSJyb3VuZCIvPgogIDxwYXRoIGQ9Ik04IDE2TDI0IDE2IiBzdHJva2U9IiNGRkZGRkYiIHN0cm9rZS13aWR0aD0iMiIgc3Ryb2tlLWxpbmVjYXA9InJvdW5kIi8+CiAgPGNpcmNsZSBjeD0iMTYiIGN5PSIxNiIgcj0iMiIgZmlsbD0iI0ZGRkZGRiIvPgo8L3N2Zz4=)](https://claude.ai)
 
 </div>
 
