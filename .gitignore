@@ -38,4 +38,5 @@ temp/
 *.tmp
 
 # Claude Code local settings (keep the template)
-# .claude/settings.local.json
+.claude/settings.local.json
+.github-action-private
