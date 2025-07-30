@@ -1,7 +1,7 @@
 name: PR Review
 
 on:
-  pull_request:
+  pull_request_target:  # Allows running on PRs from forks
     types: [opened, synchronize]
     paths:
       - '.claude/**'
@@ -20,6 +20,7 @@ jobs:
       - name: Checkout PR
         uses: actions/checkout@v4
         with:
+          ref: ${{ github.event.pull_request.head.sha }}  # Checkout PR head for external contributors
           fetch-depth: 0
       
       - name: Get Changed Files

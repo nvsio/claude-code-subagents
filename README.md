@@ -111,7 +111,16 @@ cp .github/workflows/self-healing.yml /your/repo/
 
 ## 🤝 contribute
 
-drop a PR. doesn't have to be perfect—our agents + humans will help polish it.
+drop a PR. doesn't have to be perfect—claude will review it automatically and help polish it.
+
+### what happens when you PR
+
+1. **instant review**: claude reviews your changes within ~30 seconds
+2. **constructive feedback**: get specific suggestions, not just "lgtm"
+3. **automatic validation**: repo-updater checks your agent configs
+4. **helpful labels**: auto-tagged based on what you changed
+
+no gatekeeping. we want your ideas.
 
 ### ideas we'd love to see
 
