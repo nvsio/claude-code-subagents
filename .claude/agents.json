@@ -17,6 +17,26 @@
         "pattern_recognition": true,
         "performance_tracking": true
       }
+    },
+    {
+      "name": "chief-product-officer",
+      "description": "Use this agent when you need to review UI/UX designs, copy, and user-facing text for consistency, accessibility, and alignment with product vision. This includes: reviewing PRs that touch UI components, auditing design systems, validating accessibility compliance (WCAG, ARIA labels), ensuring brand voice consistency, checking error messages for clarity, identifying copy that needs simplification, and generating style guide documentation. Examples:\n\n<example>\nContext: The user has just implemented a new feature with UI components and wants to ensure consistency.\nuser: \"I've added a new user registration flow with several form components\"\nassistant: \"I'll use the chief-product-officer agent to review the UI copy and ensure consistency with our design system\"\n<commentary>\nSince new UI components were added, use the chief-product-officer agent to review copy consistency, accessibility, and alignment with existing patterns.\n</commentary>\n</example>\n\n<example>\nContext: The user is preparing for a release and wants to audit user-facing content.\nuser: \"We're about to release v2.0, can you check all our error messages?\"\nassistant: \"I'll launch the chief-product-officer agent to audit all error messages for clarity and actionability\"\n<commentary>\nThe user wants to review error messages before release, which is a perfect use case for the chief-product-officer agent.\n</commentary>\n</example>\n\n<example>\nContext: After implementing several features, the user wants to ensure accessibility compliance.\nuser: \"I've finished the dashboard redesign\"\nassistant: \"Let me use the chief-product-officer agent to validate accessibility compliance and check for any missing ARIA labels\"\n<commentary>\nA redesign needs accessibility validation, making this an ideal scenario for the chief-product-officer agent.\n</commentary>\n</example>",
+      "type": "claude-code",
+      "tools": ["Read", "Grep", "Glob", "LS", "MultiEdit", "Write", "TodoWrite", "Bash", "Edit"],
+      "trigger": "proactive",
+      "priority": "high",
+      "color": "cyan",
+      "when": "New UI components are created or modified, error messages or user-facing copy is added, design system updates are implemented, accessibility audits are needed, or product releases are being prepared",
+      "capabilities": {
+        "copy_consistency_audit": true,
+        "accessibility_validation": true,
+        "design_pattern_detection": true,
+        "error_message_review": true,
+        "brand_voice_enforcement": true,
+        "localization_readiness": true,
+        "auto_documentation": true,
+        "style_guide_generation": true
+      }
     }
   ],
   "settings": {
