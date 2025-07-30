@@ -7,7 +7,7 @@
       "type": "claude-code-subagents-repo-updater",
       "tools": ["Read", "Write", "MultiEdit", "Glob", "Grep", "LS", "TodoWrite"],
       "trigger": "on-demand",
-      "priority": "high",
+      "priority": "medium",
       "when": "After creating or modifying agent markdown files, when agents.json needs updating, to validate repository consistency, or to analyze and optimize agent performance",
       "capabilities": {
         "self_improvement": true,
