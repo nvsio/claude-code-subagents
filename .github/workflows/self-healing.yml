@@ -1,16 +1,10 @@
 name: Self-Healing Repository
 
 on:
-  # Run on every push to main
   push:
     branches: [ main ]
-  
-  # Run on every PR that targets main
   pull_request:
     branches: [ main ]
-    types: [opened, synchronize, reopened]
-  
-  # Manual trigger for testing
   workflow_dispatch:
     inputs:
       mode:
@@ -22,115 +16,33 @@ on:
           - light
           - standard
           - deep
-  
-  # Scheduled runs (uncomment when ready)
-  # schedule:
-  #   - cron: '0 3 * * 2,5'  # Tuesday and Friday at 3 AM UTC
 
 jobs:
   repo-maintenance:
     runs-on: ubuntu-latest
-    # Skip workflow runs on automated commits to prevent loops
     if: |
-      !contains(github.event.head_commit.message, 'automated repository maintenance') &&
-      !contains(github.event.head_commit.message, '🤖 Generated with Claude Code')
+      !contains(github.event.head_commit.message, 'automated repository maintenance')
     
     steps:
-      - name: Checkout repository
+      - name: Checkout
         uses: actions/checkout@v4
         with:
-          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
       
-      - name: Set maintenance mode
-        id: mode
-        run: |
-          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
-            echo "mode=${{ github.event.inputs.mode }}" >> $GITHUB_OUTPUT
-          elif [[ "${{ github.event_name }}" == "schedule" ]]; then
-            echo "mode=standard" >> $GITHUB_OUTPUT
-          else
-            echo "mode=light" >> $GITHUB_OUTPUT
-          fi
-          echo "Selected mode: $(grep mode $GITHUB_OUTPUT | cut -d= -f2)"
-      
-      - name: Run Claude Code Repo-Updater
-        uses: anthropics/claude-code-base-action@beta
-        id: claude
+      - name: Run Claude Code
+        uses: anthropics/claude-code@v1
         with:
-          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
-          prompt: |
-            Use the repo-updater agent to perform maintenance on this repository.
-            
-            Task: @agent-repo-updater
-            Mode: ${{ steps.mode.outputs.mode }}
-            
-            Instructions for ${{ steps.mode.outputs.mode }} mode:
-            ${{ steps.mode.outputs.mode == 'light' && 'Quick validation only. Check JSON syntax and markdown sync. Exit immediately if healthy.' || '' }}
-            ${{ steps.mode.outputs.mode == 'standard' && 'Full validation and fixes. Sync markdown/JSON, validate configs, update metadata.' || '' }}
-            ${{ steps.mode.outputs.mode == 'deep' && 'Comprehensive analysis. Everything in standard plus analyze patterns, suggest improvements, optimize configs.' || '' }}
-            
-            Be efficient with API usage. Only make necessary changes.
-          allowed_tools: "Task"
-          max_conversation_turns: "1"
+          api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          command: |
+            @agent-repo-updater
+            Mode: ${{ github.event.inputs.mode || 'light' }}
+            Task: Validate and fix agent configurations in .claude/
       
-      - name: Check for changes
-        id: changes
-        run: |
-          if [[ -n $(git status --porcelain) ]]; then
-            echo "has_changes=true" >> $GITHUB_OUTPUT
-            echo "change_count=$(git status --porcelain | wc -l)" >> $GITHUB_OUTPUT
-            echo "📝 Changes detected:"
-            git status --short
-          else
-            echo "has_changes=false" >> $GITHUB_OUTPUT
-            echo "change_count=0" >> $GITHUB_OUTPUT
-            echo "✅ No changes needed - repository is healthy!"
-          fi
-      
-      - name: Create Pull Request
-        if: steps.changes.outputs.has_changes == 'true' && github.event_name != 'pull_request'
+      - name: Create PR if changes
+        if: success()
         uses: peter-evans/create-pull-request@v6
         with:
-          token: ${{ secrets.GITHUB_TOKEN }}
-          commit-message: |
-            fix: automated repository maintenance (${{ steps.mode.outputs.mode }} mode)
-            
-            🤖 Generated with Claude Code
-            
-            Co-Authored-By: Claude <noreply@anthropic.com>
-          branch: auto/maintenance-${{ steps.mode.outputs.mode }}-${{ github.run_number }}
-          delete-branch: true
-          title: "🔧 [${{ steps.mode.outputs.mode }}] Automated Repository Maintenance"
-          body: |
-            ## 🤖 Automated Repository Maintenance
-            
-            **Mode**: ${{ steps.mode.outputs.mode }}
-            **Triggered by**: ${{ github.event_name }}
-            **Files Changed**: ${{ steps.changes.outputs.change_count }}
-            
-            ### What was checked
-            - ${{ steps.mode.outputs.mode == 'light' && '✅ Quick validation - JSON/Markdown sync' || steps.mode.outputs.mode == 'standard' && '🔧 Full maintenance - validation and fixes' || '🔍 Deep analysis - optimization and improvements' }}
-            
-            Please review the changes before merging.
-          labels: |
-            automated
-            maintenance
-      
-      - name: Comment on PR
-        if: steps.changes.outputs.has_changes == 'true' && github.event_name == 'pull_request'
-        uses: actions/github-script@v7
-        with:
-          github-token: ${{ secrets.GITHUB_TOKEN }}
-          script: |
-            github.rest.issues.createComment({
-              issue_number: context.issue.number,
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              body: `## 🔧 Repository Maintenance Check
-            
-            Found issues that need attention in ${{ steps.mode.outputs.mode }} mode.
-            
-            **Files needing updates**: ${{ steps.changes.outputs.change_count }}
-            
-            Run the workflow manually to create a fix PR.`
-            })
+          commit-message: "fix: automated repository maintenance"
+          branch: auto/maintenance-${{ github.run_number }}
+          title: "🔧 Automated Repository Maintenance"
+          body: "The repo-updater agent found and fixed issues."
