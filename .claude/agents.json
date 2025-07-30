@@ -1,0 +1,31 @@
+{
+  "version": "1.0",
+  "agents": [
+    {
+      "name": "repo-updater",
+      "description": "Self-improving agent for maintaining, optimizing, and evolving the claude-code-subagents repository with intelligent sync, validation, and enhancement capabilities",
+      "type": "claude-code-subagents-repo-updater",
+      "tools": ["Read", "Write", "MultiEdit", "Glob", "Grep", "LS", "TodoWrite"],
+      "trigger": "on-demand",
+      "priority": "high",
+      "when": "After creating or modifying agent markdown files, when agents.json needs updating, to validate repository consistency, or to analyze and optimize agent performance",
+      "capabilities": {
+        "self_improvement": true,
+        "batch_processing": true,
+        "smart_caching": true,
+        "auto_documentation": true,
+        "pattern_recognition": true,
+        "performance_tracking": true
+      }
+    }
+  ],
+  "settings": {
+    "auto_launch": true,
+    "parallel_execution": true,
+    "max_concurrent_agents": 3,
+    "markdown_sync": true,
+    "enable_self_improvement": true,
+    "cache_validation_results": true,
+    "batch_update_threshold": 5
+  }
+}
