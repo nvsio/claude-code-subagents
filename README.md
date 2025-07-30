@@ -144,6 +144,13 @@ security-scanner:
 
 ### how to add an agent
 
+**option 1: request an agent** (easiest)
+1. ⭐ star this repo (required)
+2. [create an issue](https://github.com/nvsio/claude-code-subagents/issues/new?template=new-agent-request.yml) with your idea
+3. claude generates a world-class agent for you
+4. review and merge the PR
+
+**option 2: build your own**
 1. create `.claude/agents/your-agent.md`
 2. define its personality and capabilities
 3. submit PR

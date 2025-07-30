@@ -1,0 +1,126 @@
+name: 🤖 New Agent Request
+description: Request a new Claude Code agent to be added to the collection
+title: "[Agent Request] "
+labels: ["agent-request", "enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        ## Request a New Agent
+        
+        Thanks for suggesting a new agent! Fill out this form and Claude will create a best-in-class implementation.
+        
+  - type: input
+    id: agent-name
+    attributes:
+      label: Agent Name
+      description: What should this agent be called? (use kebab-case)
+      placeholder: "e.g., test-runner, doc-writer, security-scanner"
+    validations:
+      required: true
+      
+  - type: textarea
+    id: purpose
+    attributes:
+      label: What problem does this agent solve?
+      description: Be specific about the pain point or task this agent addresses
+      placeholder: |
+        This agent helps developers by...
+        
+        The main problem it solves is...
+        
+        Currently, developers have to manually...
+    validations:
+      required: true
+      
+  - type: textarea
+    id: capabilities
+    attributes:
+      label: Key Capabilities
+      description: List the main things this agent should be able to do
+      placeholder: |
+        - Analyze code for X
+        - Automatically fix Y
+        - Generate Z based on...
+        - Validate that...
+    validations:
+      required: true
+      
+  - type: dropdown
+    id: tools
+    attributes:
+      label: Which tools should this agent use?
+      description: Select all that apply (Cmd/Ctrl+Click for multiple)
+      multiple: true
+      options:
+        - Read
+        - Write
+        - MultiEdit
+        - Grep
+        - Glob
+        - LS
+        - Bash
+        - Task
+        - TodoWrite
+        - WebSearch
+        - WebFetch
+    validations:
+      required: true
+      
+  - type: textarea
+    id: examples
+    attributes:
+      label: Example Usage
+      description: Show how developers would use this agent
+      placeholder: |
+        @agent-your-agent-name analyze my test coverage
+        
+        @agent-your-agent-name fix the failing integration tests
+    validations:
+      required: true
+      
+  - type: dropdown
+    id: trigger
+    attributes:
+      label: When should Claude suggest this agent?
+      options:
+        - Proactively (Claude suggests when relevant)
+        - On-demand only (user must explicitly call)
+    validations:
+      required: true
+      
+  - type: textarea
+    id: existing-agent
+    attributes:
+      label: Existing Agent Definition (Optional)
+      description: If you've already written an agent, paste it here and we'll enhance it
+      placeholder: |
+        # agent-name
+        
+        ## Description
+        ...
+      
+  - type: textarea
+    id: additional-context
+    attributes:
+      label: Additional Context
+      description: Any other details that would help create an excellent agent?
+      placeholder: |
+        Similar to X tool but for Claude...
+        
+        Should integrate with Y...
+        
+        Performance is critical because...
+        
+  - type: checkboxes
+    id: confirmation
+    attributes:
+      label: Quality Standards
+      description: By submitting this request, you confirm that
+      options:
+        - label: This agent serves a specific, focused purpose
+          required: true
+        - label: This agent would genuinely help developers ship faster
+          required: true
+        - label: I've checked that a similar agent doesn't already exist
+          required: true

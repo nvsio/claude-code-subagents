@@ -1,0 +1,237 @@
+name: Agent Generator
+
+on:
+  issues:
+    types: [opened, edited]
+
+permissions:
+  contents: write
+  issues: write
+  pull-requests: write
+
+jobs:
+  generate-agent:
+    runs-on: ubuntu-latest
+    if: contains(github.event.issue.labels.*.name, 'agent-request')
+    
+    steps:
+      - name: Check if user starred the repo
+        id: star-check
+        uses: actions/github-script@v7
+        with:
+          script: |
+            try {
+              await github.rest.activity.checkRepoIsStarredByAuthenticatedUser({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                username: context.payload.issue.user.login
+              });
+              core.setOutput('starred', 'true');
+            } catch (error) {
+              core.setOutput('starred', 'false');
+              
+              // Comment on issue asking for star
+              await github.rest.issues.createComment({
+                issue_number: context.issue.number,
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                body: `## ⭐ Star Required\n\nHey @${context.payload.issue.user.login}! Thanks for the agent request.\n\nTo maintain quality and show your support, please star this repository first, then I'll generate your agent.\n\n[⭐ Star the repo](https://github.com/${context.repo.owner}/${context.repo.repo}) and comment below when done!`
+              });
+              
+              // Add label
+              await github.rest.issues.addLabels({
+                issue_number: context.issue.number,
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                labels: ['awaiting-star']
+              });
+            }
+      
+      - name: Exit if not starred
+        if: steps.star-check.outputs.starred != 'true'
+        run: |
+          echo "User has not starred the repository. Exiting."
+          exit 0
+          
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        
+      - name: Parse Issue Content
+        id: parse
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const issueBody = context.payload.issue.body;
+            
+            // Parse the issue template fields
+            const parseField = (fieldName) => {
+              const regex = new RegExp(`### ${fieldName}\\s*\\n\\n([\\s\\S]*?)(?=\\n###|$)`, 'i');
+              const match = issueBody.match(regex);
+              return match ? match[1].trim() : '';
+            };
+            
+            const agentData = {
+              name: parseField('Agent Name'),
+              purpose: parseField('What problem does this agent solve?'),
+              capabilities: parseField('Key Capabilities'),
+              tools: parseField('Which tools should this agent use?'),
+              examples: parseField('Example Usage'),
+              trigger: parseField('When should Claude suggest this agent?'),
+              existingAgent: parseField('Existing Agent Definition \\(Optional\\)'),
+              additionalContext: parseField('Additional Context')
+            };
+            
+            // Clean up tools list
+            agentData.tools = agentData.tools
+              .split('\n')
+              .filter(line => line.includes('- [x]'))
+              .map(line => line.replace(/- \[x\] /, '').trim())
+              .join(', ');
+            
+            core.setOutput('agentData', JSON.stringify(agentData));
+            core.setOutput('agentName', agentData.name);
+            
+      - name: Generate Agent with Claude
+        id: generate
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: |
+          AGENT_DATA='${{ steps.parse.outputs.agentData }}'
+          AGENT_NAME=$(echo "$AGENT_DATA" | jq -r '.name')
+          
+          # Create the prompt for Claude
+          cat > generate_prompt.json << 'EOF'
+          {
+            "model": "claude-3-5-sonnet-20241022",
+            "max_tokens": 8192,
+            "messages": [{
+              "role": "user",
+              "content": "You are an expert at creating best-in-class Claude Code agents. Generate a comprehensive agent definition based on this request:\n\n$AGENT_DATA\n\nCreate a world-class agent that:\n1. Has a clear, memorable personality\n2. Includes sophisticated self-improvement strategies\n3. Uses tools efficiently and appropriately\n4. Has excellent documentation with real-world examples\n5. Follows the exact format of our existing agents\n\nIf an existing agent was provided, enhance it to be exceptional while preserving good ideas.\n\nOutput ONLY the markdown content for the agent file, starting with # agent-name. Make it production-ready and impressive."
+            }]
+          }
+          EOF
+          
+          # Replace the placeholder with actual data
+          sed -i "s|\$AGENT_DATA|$(echo "$AGENT_DATA" | sed 's/"/\\"/g' | sed ':a;N;$!ba;s/\n/\\n/g')|g" generate_prompt.json
+          
+          # Call Claude API
+          AGENT_CONTENT=$(curl -s -X POST https://api.anthropic.com/v1/messages \
+            -H "Content-Type: application/json" \
+            -H "x-api-key: $ANTHROPIC_API_KEY" \
+            -H "anthropic-version: 2023-06-01" \
+            -d @generate_prompt.json | jq -r '.content[0].text')
+          
+          # Save the agent content
+          echo "$AGENT_CONTENT" > "agent-${AGENT_NAME}.md"
+          
+          # Create agents.json entry
+          cat > agent_entry.json << EOF
+          {
+            "name": "$AGENT_NAME",
+            "description": "$(echo "$AGENT_CONTENT" | grep -A1 "## Description" | tail -1)",
+            "type": "$(echo "$AGENT_CONTENT" | grep -A1 "## Type" | tail -1)",
+            "tools": $(echo "$AGENT_DATA" | jq -r '.tools' | sed 's/, /", "/g' | sed 's/^/["/' | sed 's/$/"]/'),
+            "trigger": "$(echo "$AGENT_DATA" | jq -r '.trigger' | grep -q "Proactively" && echo "proactive" || echo "on-demand")",
+            "priority": "medium"
+          }
+          EOF
+          
+      - name: Create Feature Branch
+        id: branch
+        run: |
+          BRANCH_NAME="agent/${{ steps.parse.outputs.agentName }}-${{ github.event.issue.number }}"
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          
+          git checkout -b "$BRANCH_NAME"
+          
+          # Add the new agent file
+          mkdir -p .claude/agents
+          mv "agent-${{ steps.parse.outputs.agentName }}.md" ".claude/agents/${{ steps.parse.outputs.agentName }}.md"
+          
+          # Update agents.json
+          if [ -f .claude/agents.json ]; then
+            # Add new agent to existing file
+            jq --argjson newAgent "$(cat agent_entry.json)" '.agents += [$newAgent]' .claude/agents.json > temp.json
+            mv temp.json .claude/agents.json
+          else
+            # Create new agents.json
+            echo '{"agents": ['"$(cat agent_entry.json)"']}' > .claude/agents.json
+          fi
+          
+          # Commit changes
+          git add .claude/agents/
+          git commit -m "feat: add ${{ steps.parse.outputs.agentName }} agent
+          
+          Requested by: @${{ github.event.issue.user.login }}
+          Issue: #${{ github.event.issue.number }}
+          
+          Generated using Claude 3.5 Sonnet"
+          
+          # Push branch
+          git push origin "$BRANCH_NAME"
+          
+          echo "branch=$BRANCH_NAME" >> $GITHUB_OUTPUT
+          
+      - name: Create Pull Request
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const pr = await github.rest.pulls.create({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              title: `✨ Add ${context.payload.issue.user.login}'s ${JSON.parse('${{ steps.parse.outputs.agentData }}').name} agent`,
+              head: '${{ steps.branch.outputs.branch }}',
+              base: 'main',
+              body: `## 🤖 New Agent: \`@agent-${{ steps.parse.outputs.agentName }}\`
+              
+              This PR adds a new agent requested by @${context.payload.issue.user.login} in #${context.payload.issue.number}.
+              
+              ### Agent Details
+              ${JSON.parse('${{ steps.parse.outputs.agentData }}').purpose}
+              
+              ### Capabilities
+              ${JSON.parse('${{ steps.parse.outputs.agentData }}').capabilities}
+              
+              ### Review Checklist
+              - [ ] Agent serves a focused purpose
+              - [ ] Documentation is clear and helpful
+              - [ ] Examples are practical
+              - [ ] Tools are appropriate
+              - [ ] Self-improvement strategies included
+              
+              ---
+              *Generated with Claude 3.5 Sonnet for maximum quality*
+              
+              Closes #${context.payload.issue.number}`
+            });
+            
+            // Link PR to issue
+            await github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: `## 🎉 Agent Created!\n\nI've generated your \`@agent-${{ steps.parse.outputs.agentName }}\` and created PR #${pr.data.number}.\n\nThe agent includes:\n- Sophisticated self-improvement capabilities\n- Clear documentation and examples\n- Optimal tool selection\n- Production-ready implementation\n\nClaude will review it shortly to ensure it meets our quality standards.`
+            });
+            
+      - name: Request Review
+        uses: actions/github-script@v7
+        if: success()
+        with:
+          script: |
+            // Auto-request review from repo owner
+            const pr = await github.rest.pulls.list({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              head: `${context.repo.owner}:${{ steps.branch.outputs.branch }}`,
+              state: 'open'
+            });
+            
+            if (pr.data.length > 0) {
+              await github.rest.pulls.requestReviewers({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                pull_number: pr.data[0].number,
+                reviewers: ['nvsio']
+              });
+            }

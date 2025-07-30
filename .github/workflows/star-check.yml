@@ -1,0 +1,73 @@
+name: Star Check
+
+on:
+  issue_comment:
+    types: [created]
+
+permissions:
+  issues: write
+  contents: write
+  pull-requests: write
+
+jobs:
+  check-star:
+    runs-on: ubuntu-latest
+    if: |
+      contains(github.event.issue.labels.*.name, 'awaiting-star') &&
+      (contains(github.event.comment.body, 'starred') || 
+       contains(github.event.comment.body, 'done') ||
+       contains(github.event.comment.body, '⭐'))
+    
+    steps:
+      - name: Verify star and trigger agent generation
+        uses: actions/github-script@v7
+        with:
+          script: |
+            // Check if user has now starred
+            try {
+              await github.rest.activity.checkRepoIsStarredByAuthenticatedUser({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                username: context.payload.comment.user.login
+              });
+              
+              // Remove awaiting-star label
+              await github.rest.issues.removeLabel({
+                issue_number: context.issue.number,
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                name: 'awaiting-star'
+              });
+              
+              // Add agent-request label to trigger generation
+              await github.rest.issues.addLabels({
+                issue_number: context.issue.number,
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                labels: ['agent-request-ready']
+              });
+              
+              // Thank the user
+              await github.rest.issues.createComment({
+                issue_number: context.issue.number,
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                body: `Thanks for starring @${context.payload.comment.user.login}! ⭐\n\nGenerating your agent now...`
+              });
+              
+              // Trigger the agent generator by re-dispatching
+              await github.rest.issues.update({
+                issue_number: context.issue.number,
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                body: context.payload.issue.body + '\n\n<!-- starred-verified -->'
+              });
+              
+            } catch (error) {
+              await github.rest.issues.createComment({
+                issue_number: context.issue.number,
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                body: `I don't see a star yet @${context.payload.comment.user.login}. Please [star the repository](https://github.com/${context.repo.owner}/${context.repo.repo}) and try again.`
+              });
+            }
