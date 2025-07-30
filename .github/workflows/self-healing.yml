@@ -1,0 +1,97 @@
+name: Self-Healing Repository
+
+on:
+  # Manual trigger for testing
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: 'Maintenance mode'
+        required: true
+        default: 'light'
+        type: choice
+        options:
+          - light
+          - standard
+          - deep
+  
+  # Scheduled runs (uncomment when ready)
+  # schedule:
+  #   - cron: '0 3 * * 2,5'  # Tuesday and Friday at 3 AM UTC
+
+jobs:
+  repo-maintenance:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      
+      - name: Run Repo-Updater Agent
+        uses: anthropics/claude-code-action@beta
+        with:
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          timeout_minutes: "10"
+          direct_prompt: |
+            Use the repo-updater agent to maintain the claude-code-subagents repository.
+            
+            Mode: ${{ github.event.inputs.mode || 'light' }}
+            
+            For light mode:
+            - Quick validation only
+            - Check sync between markdown and JSON
+            - Exit early if no issues
+            
+            For standard mode:
+            - Full validation and sync
+            - Fix any issues found
+            - Update configurations as needed
+            
+            For deep mode:
+            - Everything in standard mode
+            - Analyze patterns and suggest improvements
+            - Generate comprehensive report
+            
+            Be efficient and only make necessary changes.
+          allowed_tools: ["Task", "Read", "Write", "MultiEdit", "Glob", "Grep", "LS"]
+      
+      - name: Check for changes
+        id: changes
+        run: |
+          if [[ -n $(git status --porcelain) ]]; then
+            echo "has_changes=true" >> $GITHUB_OUTPUT
+          else
+            echo "has_changes=false" >> $GITHUB_OUTPUT
+            echo "✅ No changes needed - repository is healthy!"
+          fi
+      
+      - name: Create Pull Request
+        if: steps.changes.outputs.has_changes == 'true'
+        uses: peter-evans/create-pull-request@v6
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          commit-message: |
+            fix: automated repository maintenance
+            
+            🤖 Generated with Claude Code
+            
+            Co-Authored-By: Claude <noreply@anthropic.com>
+          branch: auto/repo-maintenance-${{ github.run_number }}
+          delete-branch: true
+          title: "🔧 Automated Repository Maintenance"
+          body: |
+            ## Automated Maintenance
+            
+            The repo-updater agent found and fixed issues in the repository.
+            
+            **Mode**: ${{ github.event.inputs.mode || 'light' }}
+            **Workflow Run**: [#${{ github.run_number }}](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})
+            
+            Please review the changes before merging.
+          labels: |
+            automated
+            maintenance
