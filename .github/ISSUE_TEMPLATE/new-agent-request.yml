@@ -1,7 +1,7 @@
 name: 🤖 New Agent Request
 description: Request a new Claude Code agent to be added to the collection
 title: "[Agent Request] "
-labels: ["agent-request", "enhancement"]
+labels: [agent-request, enhancement]
 body:
   - type: markdown
     attributes:

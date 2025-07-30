@@ -12,7 +12,9 @@ permissions:
 jobs:
   generate-agent:
     runs-on: ubuntu-latest
-    if: contains(github.event.issue.labels.*.name, 'agent-request')
+    if: |
+      contains(github.event.issue.labels.*.name, 'agent-request') ||
+      contains(github.event.issue.title, '[Agent Request]')
     
     steps:
       - name: Check if user starred the repo
