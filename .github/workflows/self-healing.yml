@@ -37,17 +37,17 @@ jobs:
           # Simple direct maintenance
           MODE="${{ github.event.inputs.mode || 'light' }}"
           
-          # Call Claude API to check repo
+          # Call Claude API with Sonnet for better analysis
           curl -X POST https://api.anthropic.com/v1/messages \
             -H "Content-Type: application/json" \
             -H "x-api-key: $ANTHROPIC_API_KEY" \
             -H "anthropic-version: 2023-06-01" \
             -d "{
-              \"model\": \"claude-3-haiku-20240307\",
-              \"max_tokens\": 1024,
+              \"model\": \"claude-3-5-sonnet-20241022\",
+              \"max_tokens\": 4096,
               \"messages\": [{
                 \"role\": \"user\",
-                \"content\": \"Check if the file .claude/agents.json exists and is valid JSON. If it exists and is valid, respond with 'VALID'. If not, respond with 'INVALID'. No other text.\"
+                \"content\": \"As a senior code reviewer, analyze the claude-code-subagents repository structure in .claude/. Check for: 1) Valid agents.json syntax, 2) Sync between markdown files and JSON entries, 3) Agent configuration completeness. Format your response as a professional code review with sections for Summary, Positive Changes, Concerns (if any), and Recommendations. Use markdown formatting with emojis where appropriate (✅ for positive, ⚠️ for warnings, 🔍 for observations).\"
               }]
             }" > response.json
           
