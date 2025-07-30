@@ -25,11 +25,17 @@ jobs:
           script: |
             // Check if user has now starred
             try {
-              await github.rest.activity.checkRepoIsStarredByAuthenticatedUser({
+              const { data: stargazers } = await github.rest.activity.listStargazersForRepo({
                 owner: context.repo.owner,
                 repo: context.repo.repo,
-                username: context.payload.comment.user.login
+                per_page: 100
               });
+              
+              const hasStarred = stargazers.some(user => user.login === context.payload.comment.user.login);
+              
+              if (!hasStarred) {
+                throw new Error('Not starred');
+              }
               
               // Remove awaiting-star label
               await github.rest.issues.removeLabel({

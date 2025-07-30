@@ -21,14 +21,20 @@ jobs:
         with:
           script: |
             try {
-              await github.rest.activity.checkRepoIsStarredByAuthenticatedUser({
+              // Check if the user has starred the repo
+              const { data: stargazers } = await github.rest.activity.listStargazersForRepo({
                 owner: context.repo.owner,
                 repo: context.repo.repo,
-                username: context.payload.issue.user.login
+                per_page: 100
               });
-              core.setOutput('starred', 'true');
-            } catch (error) {
-              core.setOutput('starred', 'false');
+              
+              const hasStarred = stargazers.some(user => user.login === context.payload.issue.user.login);
+              
+              // Allow repo owner to bypass star requirement for testing
+              if (hasStarred || context.payload.issue.user.login === context.repo.owner) {
+                core.setOutput('starred', 'true');
+              } else {
+                core.setOutput('starred', 'false');
               
               // Comment on issue asking for star
               await github.rest.issues.createComment({
@@ -45,6 +51,10 @@ jobs:
                 repo: context.repo.repo,
                 labels: ['awaiting-star']
               });
+              }
+            } catch (error) {
+              console.error('Error checking stars:', error);
+              core.setOutput('starred', 'false');
             }
       
       - name: Exit if not starred
