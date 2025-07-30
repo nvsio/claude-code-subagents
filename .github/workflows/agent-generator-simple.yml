@@ -1,0 +1,100 @@
+name: Agent Generator Simple
+
+on:
+  issues:
+    types: [opened]
+
+permissions:
+  contents: write
+  issues: write
+  pull-requests: write
+
+jobs:
+  generate-agent:
+    runs-on: ubuntu-latest
+    if: contains(github.event.issue.title, '[Agent Request]')
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        
+      - name: Generate CLO Agent
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: |
+          # For now, create a hardcoded CLO agent as proof of concept
+          cat > .claude/agents/clo-agent.md << 'EOF'
+          # clo-agent
+
+          ## Description
+          Chief Learning Officer - helps teams build learning culture and knowledge sharing practices
+
+          ## Type
+          learning-optimizer
+
+          ## Tools
+          - Read
+          - Write
+          - MultiEdit
+          - Grep
+          - TodoWrite
+
+          ## Purpose
+          The CLO agent helps development teams:
+          - Create effective documentation and learning materials
+          - Identify knowledge gaps in the codebase
+          - Build onboarding guides for new team members
+          - Establish best practices for knowledge sharing
+          - Track learning progress and skill development
+
+          ## When to Use
+          - Setting up onboarding for new developers
+          - Creating documentation standards
+          - Building team knowledge bases
+          - Identifying areas that need better documentation
+          - Establishing learning paths
+
+          ## Example Usage
+          ```
+          @agent-clo-agent create onboarding guide for this repository
+          @agent-clo-agent identify knowledge gaps in our documentation
+          @agent-clo-agent suggest learning resources for the team
+          ```
+
+          ## Self-Improvement
+          - Analyzes which documentation gets read most
+          - Tracks which onboarding steps cause confusion
+          - Learns from team feedback on materials
+          - Adapts to team's learning styles over time
+          EOF
+          
+          # Update agents.json
+          cat > agent_entry.json << 'EOF'
+          {
+            "name": "clo-agent",
+            "description": "Chief Learning Officer - helps teams build learning culture",
+            "type": "learning-optimizer",
+            "tools": ["Read", "Write", "MultiEdit", "Grep", "TodoWrite"],
+            "trigger": "on-demand",
+            "priority": "high"
+          }
+          EOF
+          
+          # Add to agents.json
+          if [ -f .claude/agents.json ]; then
+            jq --argjson newAgent "$(cat agent_entry.json)" '.agents += [$newAgent]' .claude/agents.json > temp.json
+            mv temp.json .claude/agents.json
+          fi
+          
+      - name: Create PR
+        uses: peter-evans/create-pull-request@v6
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          commit-message: "feat: add CLO agent for learning optimization"
+          branch: agent/clo-${{ github.event.issue.number }}
+          title: "✨ Add CLO Agent (Chief Learning Officer)"
+          body: |
+            Adds the CLO agent requested in #${{ github.event.issue.number }}
+            
+            The CLO agent helps teams build strong learning cultures and documentation practices.
+          labels: agent, enhancement

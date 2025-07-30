@@ -73,13 +73,26 @@ jobs:
         uses: actions/github-script@v7
         with:
           script: |
-            const issueBody = context.payload.issue.body;
+            const issueBody = context.payload.issue.body || '';
+            console.log('Issue body:', issueBody);
             
-            // Parse the issue template fields
+            // Parse the issue template fields - GitHub uses different formatting
             const parseField = (fieldName) => {
-              const regex = new RegExp(`### ${fieldName}\\s*\\n\\n([\\s\\S]*?)(?=\\n###|$)`, 'i');
-              const match = issueBody.match(regex);
-              return match ? match[1].trim() : '';
+              // Try different patterns that GitHub might use
+              const patterns = [
+                new RegExp(`### ${fieldName}\\s*\\n\\n([\\s\\S]*?)(?=\\n###|$)`, 'i'),
+                new RegExp(`### ${fieldName}\\s*\\n([\\s\\S]*?)(?=\\n###|$)`, 'i'),
+                new RegExp(`\\*\\*${fieldName}\\*\\*\\s*\\n\\n([\\s\\S]*?)(?=\\n\\*\\*|$)`, 'i'),
+                new RegExp(`${fieldName}\\s*\\n\\n([\\s\\S]*?)(?=\\n\\n|$)`, 'i')
+              ];
+              
+              for (const regex of patterns) {
+                const match = issueBody.match(regex);
+                if (match && match[1]) {
+                  return match[1].trim();
+                }
+              }
+              return '';
             };
             
             const agentData = {
@@ -93,12 +106,22 @@ jobs:
               additionalContext: parseField('Additional Context')
             };
             
-            // Clean up tools list
-            agentData.tools = agentData.tools
-              .split('\n')
-              .filter(line => line.includes('- [x]'))
-              .map(line => line.replace(/- \[x\] /, '').trim())
-              .join(', ');
+            // Clean up tools list - handle different checkbox formats
+            if (agentData.tools) {
+              agentData.tools = agentData.tools
+                .split('\n')
+                .filter(line => line.includes('[x]') || line.includes('[X]') || line.includes('☑') || line.includes('✓'))
+                .map(line => line.replace(/[-*]\s*\[[xX]\]\s*/, '').replace(/☑|✓/, '').trim())
+                .filter(tool => tool.length > 0)
+                .join(', ');
+            }
+            
+            // Validate required fields
+            if (!agentData.name) {
+              throw new Error('Agent name is required');
+            }
+            
+            console.log('Parsed agent data:', agentData);
             
             core.setOutput('agentData', JSON.stringify(agentData));
             core.setOutput('agentName', agentData.name);
