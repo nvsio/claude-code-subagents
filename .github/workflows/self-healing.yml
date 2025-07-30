@@ -40,14 +40,6 @@ jobs:
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
-          # Use default token for checkout
-          token: ${{ secrets.GITHUB_TOKEN }}
-      
-      - name: Configure git
-        run: |
-          git config --global user.name "github-actions[bot]"
-          git config --global user.email "github-actions[bot]@users.noreply.github.com"
-          git config --global --add safe.directory ${{ github.workspace }}
       
       - name: Set maintenance mode
         id: mode
@@ -59,7 +51,7 @@ jobs:
           else
             echo "mode=light" >> $GITHUB_OUTPUT
           fi
-          echo "Selected mode: $(cat $GITHUB_OUTPUT | grep mode)"
+          echo "Selected mode: $(grep mode $GITHUB_OUTPUT | cut -d= -f2)"
       
       - name: Run Claude Code Repo-Updater
         uses: anthropics/claude-code-base-action@beta
@@ -67,34 +59,19 @@ jobs:
         with:
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
           prompt: |
-            @agent-repo-updater perform maintenance on claude-code-subagents repository
+            Use the repo-updater agent to perform maintenance on this repository.
             
+            Task: @agent-repo-updater
             Mode: ${{ steps.mode.outputs.mode }}
-            Path: ${{ github.workspace }}
             
-            LIGHT mode (${{ github.event_name == 'push' && 'triggered by push' || github.event_name == 'pull_request' && 'triggered by PR' || 'manual run' }}):
-            - Validate .claude/agents.json syntax
-            - Check markdown/JSON sync
-            - Report issues only if found
-            - EXIT IMMEDIATELY if healthy (save API credits)
+            Instructions for ${{ steps.mode.outputs.mode }} mode:
+            ${{ steps.mode.outputs.mode == 'light' && 'Quick validation only. Check JSON syntax and markdown sync. Exit immediately if healthy.' || '' }}
+            ${{ steps.mode.outputs.mode == 'standard' && 'Full validation and fixes. Sync markdown/JSON, validate configs, update metadata.' || '' }}
+            ${{ steps.mode.outputs.mode == 'deep' && 'Comprehensive analysis. Everything in standard plus analyze patterns, suggest improvements, optimize configs.' || '' }}
             
-            STANDARD mode:
-            - Fix any sync issues between .claude/agents/*.md and agents.json
-            - Validate all agent configurations
-            - Update outdated metadata
-            - Generate brief summary
-            
-            DEEP mode:
-            - Everything in standard PLUS:
-            - Analyze agent effectiveness
-            - Suggest new agents based on gaps
-            - Optimize tool assignments
-            - Create comprehensive health report in sync-report.md
-            
-            CRITICAL: Be extremely efficient. The repo-updater agent should use its self-improvement capabilities to minimize API usage while maximizing value.
+            Be efficient with API usage. Only make necessary changes.
           allowed_tools: "Task"
-          max_turns: "1"
-          timeout_minutes: "${{ steps.mode.outputs.mode == 'deep' && '15' || steps.mode.outputs.mode == 'standard' && '10' || '5' }}"
+          max_conversation_turns: "1"
       
       - name: Check for changes
         id: changes
@@ -118,9 +95,6 @@ jobs:
           commit-message: |
             fix: automated repository maintenance (${{ steps.mode.outputs.mode }} mode)
             
-            Maintenance mode: ${{ steps.mode.outputs.mode }}
-            Files changed: ${{ steps.changes.outputs.change_count }}
-            
             🤖 Generated with Claude Code
             
             Co-Authored-By: Claude <noreply@anthropic.com>
@@ -130,33 +104,17 @@ jobs:
           body: |
             ## 🤖 Automated Repository Maintenance
             
-            **Maintenance Mode**: ${{ steps.mode.outputs.mode }}
+            **Mode**: ${{ steps.mode.outputs.mode }}
             **Triggered by**: ${{ github.event_name }}
             **Files Changed**: ${{ steps.changes.outputs.change_count }}
-            **Workflow Run**: [#${{ github.run_number }}](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})
-            
-            ### Maintenance Summary
-            ```
-            ${{ steps.claude.outputs.summary || 'See workflow logs for details.' }}
-            ```
             
             ### What was checked
-            ${{ steps.mode.outputs.mode == 'light' && '✅ Quick validation only - JSON/Markdown sync' || '' }}
-            ${{ steps.mode.outputs.mode == 'standard' && '🔧 Full maintenance - sync, validation, and fixes' || '' }}
-            ${{ steps.mode.outputs.mode == 'deep' && '🔍 Deep analysis - optimization and improvements' || '' }}
+            - ${{ steps.mode.outputs.mode == 'light' && '✅ Quick validation - JSON/Markdown sync' || steps.mode.outputs.mode == 'standard' && '🔧 Full maintenance - validation and fixes' || '🔍 Deep analysis - optimization and improvements' }}
             
-            ### Review checklist
-            - [ ] Changes are necessary and improve the repository
-            - [ ] No breaking changes introduced
-            - [ ] Agent configurations remain valid
-            
-            ---
-            *Generated by claude-code-subagents self-healing system v1.0*
+            Please review the changes before merging.
           labels: |
             automated
             maintenance
-            ${{ steps.mode.outputs.mode }}-mode
-          reviewers: nvsio
       
       - name: Comment on PR
         if: steps.changes.outputs.has_changes == 'true' && github.event_name == 'pull_request'
@@ -170,32 +128,9 @@ jobs:
               repo: context.repo.repo,
               body: `## 🔧 Repository Maintenance Check
             
-            I found some issues that need attention:
+            Found issues that need attention in ${{ steps.mode.outputs.mode }} mode.
             
-            \`\`\`
-            ${{ steps.claude.outputs.summary || 'Changes needed - see workflow logs.' }}
-            \`\`\`
+            **Files needing updates**: ${{ steps.changes.outputs.change_count }}
             
-            **Files that need updates**: ${{ steps.changes.outputs.change_count }}
-            
-            Please run the workflow manually or merge the automated PR to fix these issues.`
+            Run the workflow manually to create a fix PR.`
             })
-      
-      - name: Job Summary
-        if: always()
-        run: |
-          echo "## Self-Healing Workflow Summary" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "- **Mode**: ${{ steps.mode.outputs.mode }}" >> $GITHUB_STEP_SUMMARY
-          echo "- **Changes Made**: ${{ steps.changes.outputs.has_changes }}" >> $GITHUB_STEP_SUMMARY
-          echo "- **Files Modified**: ${{ steps.changes.outputs.change_count || '0' }}" >> $GITHUB_STEP_SUMMARY
-          echo "- **Trigger**: ${{ github.event_name }}" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          if [[ "${{ steps.changes.outputs.has_changes }}" == "true" ]]; then
-            echo "### Changes Made" >> $GITHUB_STEP_SUMMARY
-            echo '```' >> $GITHUB_STEP_SUMMARY
-            git diff --stat >> $GITHUB_STEP_SUMMARY
-            echo '```' >> $GITHUB_STEP_SUMMARY
-          else
-            echo "✅ Repository is healthy - no changes needed!" >> $GITHUB_STEP_SUMMARY
-          fi
