@@ -67,7 +67,7 @@ jobs:
             - Generate comprehensive report
             
             Be efficient and only make necessary changes.
-          allowed_tools: ["Task", "Read", "Write", "MultiEdit", "Glob", "Grep", "LS"]
+          allowed_tools: "Task,Read,Write,MultiEdit,Glob,Grep,LS"
       
       - name: Check for changes
         id: changes
