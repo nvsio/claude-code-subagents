@@ -1,198 +1,128 @@
-# Self-Healing Workflow Documentation
+# GitHub Actions Workflows
 
-## Overview
+This directory contains GitHub Actions workflows for automated repository maintenance.
 
-This repository uses an automated self-healing workflow powered by Claude Code that maintains repository health, ensures agent consistency, and applies optimizations automatically.
+## Workflows
 
-## Features
+### 1. Self-Healing Repository (`self-healing.yml`)
 
-### 🔄 Automatic Triggers
-- **Push to main**: Light validation on every commit
-- **Pull Requests**: Validates changes before merge
-- **Manual dispatch**: Choose maintenance mode
-- **Schedule**: Bi-weekly deep maintenance (optional)
+The main automated maintenance workflow that:
+- Runs on push, PR, schedule, or manual trigger
+- Validates repository structure
+- Synchronizes agent configurations
+- Creates PRs for any necessary changes
+- Supports GitHub App authentication for enhanced permissions
 
-### 🎯 Maintenance Modes
+### 2. Self-Healing Repository Simple (`self-healing-simple.yml`)
 
-#### Light Mode (Default)
-- **Duration**: 2-3 minutes
-- **Cost**: ~$0.01
-- **Tasks**:
-  - Validate JSON/Markdown sync
-  - Check basic syntax
-  - Report critical errors
-  - Exit early if healthy
+A simplified version that:
+- Works with just the default GITHUB_TOKEN
+- Provides basic repository maintenance
+- Easier to set up but with limited capabilities
 
-#### Standard Mode
-- **Duration**: 5-10 minutes
-- **Cost**: ~$0.05
-- **Tasks**:
-  - Everything from Light mode
-  - Fix sync issues
-  - Validate agent schemas
-  - Update metadata
-  - Fix formatting
+### 3. Test Self-Healing (`test-self-healing.yml`)
 
-#### Deep Mode
-- **Duration**: 15-20 minutes
-- **Cost**: ~$0.10
-- **Tasks**:
-  - Everything from Standard mode
-  - Analyze usage patterns
-  - Suggest consolidations
-  - Identify gaps
-  - Generate health reports
+Comprehensive test suite that validates:
+- Git configuration
+- PR creation capabilities
+- Error handling
+- Permission requirements
 
-### 🛡️ Safety Features
+## Fixing Git Exit Code 128
 
-1. **Loop Prevention**: Skips runs on automated commits
-2. **PR Safety**: Comments on PRs instead of modifying
-3. **Change Validation**: Only creates PRs when needed
-4. **Review Process**: Auto-assigns reviewers
-5. **Clear Summaries**: Detailed job summaries
+The git exit code 128 error typically occurs due to:
 
-## Setup Requirements
+1. **Missing Permissions**: Add to your workflow:
+   ```yaml
+   permissions:
+     contents: write
+     pull-requests: write
+   ```
 
-### 1. GitHub Secrets
-Add to Settings → Secrets → Actions:
-- `ANTHROPIC_API_KEY`: Your Claude API key
+2. **Incorrect Git Configuration**: Use proper bot identity:
+   ```yaml
+   - name: Configure Git
+     run: |
+       git config user.name "github-actions[bot]"
+       git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+   ```
 
-### 2. Permissions
-Repository needs:
-- Actions: Read & Write
-- Contents: Write
-- Pull Requests: Write
-- Issues: Write (for PR comments)
+3. **Token Issues**: Ensure proper token usage:
+   ```yaml
+   - uses: actions/checkout@v4
+     with:
+       token: ${{ secrets.GITHUB_TOKEN }}
+   ```
 
-### 3. Branch Protection (Optional)
-Protect main branch:
-- Require PR reviews
-- Dismiss stale reviews
-- Include administrators
+4. **Safe Directory**: Add workspace as safe directory:
+   ```yaml
+   git config --add safe.directory "$GITHUB_WORKSPACE"
+   ```
 
-## Usage
+## Setup Instructions
 
-### Manual Trigger
-1. Go to Actions tab
-2. Select "Self-Healing Repository"
-3. Click "Run workflow"
-4. Choose maintenance mode
-5. Click "Run workflow"
+### Basic Setup (Using GITHUB_TOKEN)
 
-### Automatic Operation
-- Commits to main: Light validation
-- PRs: Validation + comments
-- Schedule: Standard maintenance
+1. No additional configuration needed
+2. Use `self-healing-simple.yml` for basic maintenance
+3. Workflow will use default GITHUB_TOKEN
 
-### Cost Optimization
-- Light mode for frequent runs
-- Standard for weekly maintenance
-- Deep for monthly analysis
-- Early exit on healthy repos
+### Advanced Setup (Using GitHub App)
 
-## Workflow Logic
+1. Create a GitHub App with these permissions:
+   - Contents: Read & Write
+   - Pull requests: Read & Write
+   - Issues: Read & Write
 
-```mermaid
-graph TD
-    A[Trigger] --> B{Event Type}
-    B -->|Push/PR| C[Light Mode]
-    B -->|Schedule| D[Standard Mode]
-    B -->|Manual| E[User Choice]
-    
-    C --> F[Run Validation]
-    D --> F
-    E --> F
-    
-    F --> G{Changes Needed?}
-    G -->|No| H[Exit - Healthy]
-    G -->|Yes + Push/Schedule| I[Create PR]
-    G -->|Yes + PR| J[Add Comment]
-    
-    I --> K[Assign Reviewer]
-    J --> L[Notify in PR]
+2. Install the app on your repository
+
+3. Add these secrets/variables:
+   - `APP_ID`: Your GitHub App ID (as a variable)
+   - `APP_PRIVATE_KEY`: Your GitHub App private key (as a secret)
+
+4. Use `self-healing.yml` for full functionality
+
+### With Anthropic API (For repo-updater agent)
+
+1. Add `ANTHROPIC_API_KEY` as a repository secret
+2. The workflow will use Claude to analyze and fix repository issues
+
+## Testing
+
+Run the test workflow to validate your setup:
+
+```bash
+gh workflow run test-self-healing.yml -f test_scenario=all
 ```
 
 ## Troubleshooting
 
-### Workflow Fails
-1. Check API key is set correctly
-2. Verify permissions are granted
-3. Check Claude API status
-4. Review error logs
+### PR Creation Fails
 
-### No Changes Detected
-- Repository is healthy (good!)
-- Try Deep mode for thorough check
-- Manually verify agent files
+1. Check repository settings:
+   - Allow GitHub Actions to create PRs
+   - Disable branch protection for auto/* branches
 
-### Too Many PRs
-- Reduce trigger frequency
-- Increase mode threshold
-- Review change patterns
+2. Verify permissions in workflow file
 
-### High Costs
-- Use Light mode more
-- Reduce schedule frequency
-- Check execution times
+3. Run test workflow to diagnose issues
 
-## Configuration
+### Git Operations Fail
 
-### Customize Modes
-Edit workflow `prompt` section to adjust:
-- Validation criteria
-- Fix thresholds
-- Analysis depth
+1. Ensure git is properly configured
+2. Check token permissions
+3. Verify branch protection rules
 
-### Change Schedule
-Uncomment and modify:
-```yaml
-schedule:
-  - cron: '0 3 * * 2,5'  # Your schedule
-```
+### Workflow Doesn't Trigger
 
-### Adjust Costs
-Modify `max_turns` and `timeout_minutes`:
-```yaml
-max_turns: "10"  # Reduce for lower cost
-timeout_minutes: "5"  # Shorter duration
-```
+1. Check workflow syntax
+2. Verify branch names in triggers
+3. Ensure workflow file is in default branch
 
 ## Best Practices
 
-1. **Start Conservative**: Use Light mode initially
-2. **Monitor Costs**: Check GitHub Action minutes
-3. **Review PRs**: Don't auto-merge initially
-4. **Gradual Rollout**: Test manually first
-5. **Track Patterns**: Note common fixes
-
-## Integration
-
-### With CI/CD
-```yaml
-# Add to existing workflows
-needs: [repo-maintenance]
-if: success()
-```
-
-### With Other Checks
-- Run after tests pass
-- Before deployment
-- As merge requirement
-
-## Metrics
-
-Track in GitHub Insights:
-- Workflow run frequency
-- Success/failure rate
-- Average duration
-- Changes per run
-
-## Support
-
-- Issues: File in this repository
-- Questions: Check workflow logs
-- Improvements: Submit PRs
-
----
-
-*Powered by Claude Code + GitHub Actions*
+1. **Use Skip CI**: Add `[skip ci]` to automated commits to prevent loops
+2. **Clean Up**: Always clean up temporary files
+3. **Error Handling**: Use `continue-on-error` for non-critical steps
+4. **Logging**: Add descriptive echo statements for debugging
+5. **Idempotency**: Ensure workflows can run multiple times safely

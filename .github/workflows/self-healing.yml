@@ -1,4 +1,4 @@
-name: Self-Healing Repository
+name: self-heal
 
 on:
   push:
