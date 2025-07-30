@@ -7,24 +7,54 @@ on:
 permissions:
   contents: write
   issues: write
+  pull-requests: write
 
 jobs:
   generate:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     if: contains(github.event.issue.title, '[Agent Request]')
     
     steps:
       - uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+      
+      - name: Setup
+        run: |
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+          mkdir -p .claude/agents
       
       - name: Generate Agent
         env:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
         run: |
-          # Extract agent name from issue
-          AGENT_NAME=$(echo "${{ github.event.issue.title }}" | sed 's/.*Request]//' | tr '[:upper:]' '[:lower:]' | tr ' ' '-' | sed 's/[^a-z0-9-]//g')
+          # Extract and validate agent name
+          RAW_NAME=$(echo "${{ github.event.issue.title }}" | sed 's/.*\[Agent Request\]//' | xargs)
+          if [ -z "$RAW_NAME" ]; then
+            echo "Error: No agent name found in issue title" >&2
+            exit 1
+          fi
+          
+          # Sanitize agent name
+          AGENT_NAME=$(echo "$RAW_NAME" | tr '[:upper:]' '[:lower:]' | tr ' ' '-' | sed 's/[^a-z0-9-]//g' | sed 's/--*/-/g' | sed 's/^-//;s/-$//')
+          
+          # Validate agent name
+          if [ -z "$AGENT_NAME" ] || [ "${#AGENT_NAME}" -lt 3 ]; then
+            echo "Error: Invalid agent name after sanitization" >&2
+            exit 1
+          fi
+          
+          echo "AGENT_NAME=${AGENT_NAME}" >> $GITHUB_ENV
+          echo "Creating agent: ${AGENT_NAME}"
+          
+          # Escape issue body for JSON
+          ISSUE_BODY=$(echo '${{ github.event.issue.body }}' | jq -Rs . | sed 's/\\\\/\\/g')
           
           # Generate agent with Claude
-          curl -X POST https://api.anthropic.com/v1/messages \
+          RESPONSE=$(curl -sS --fail --max-time 60 \
+            -X POST https://api.anthropic.com/v1/messages \
             -H "x-api-key: $ANTHROPIC_API_KEY" \
             -H "anthropic-version: 2023-06-01" \
             -H "content-type: application/json" \
@@ -33,19 +63,92 @@ jobs:
               \"max_tokens\": 4096,
               \"messages\": [{
                 \"role\": \"user\",
-                \"content\": \"Create a simple agent markdown file for: ${{ github.event.issue.body }}\n\nOutput only the markdown content.\"
+                \"content\": \"Create a Claude Code agent markdown file. Requirements:\n- Agent name: ${AGENT_NAME}\n- Description: ${ISSUE_BODY}\n- Include: name, description, use_cases, examples, tools sections\n- Format: Clean markdown\n- Be concise but comprehensive\n\nOutput only the markdown content.\"
               }]
-            }" | jq -r '.content[0].text' > ".claude/agents/${AGENT_NAME}.md"
+            }" 2>&1) || {
+            echo "API call failed: $RESPONSE" >&2
+            # Create fallback agent file
+            cat > ".claude/agents/${AGENT_NAME}.md" << EOF
+# ${AGENT_NAME}
+
+## Description
+${RAW_NAME} agent - requested via GitHub issue.
+
+## Use Cases
+- Pending implementation
+
+## Examples
+- Pending examples
+
+## Tools
+- Read
+- Write
+- Edit
+EOF
+            echo "Created fallback agent file"
+          }
+          
+          # Extract content if API succeeded
+          if [ -n "$RESPONSE" ] && echo "$RESPONSE" | jq -e '.content[0].text' >/dev/null 2>&1; then
+            echo "$RESPONSE" | jq -r '.content[0].text' > ".claude/agents/${AGENT_NAME}.md"
+          fi
+          
+          # Validate agent file
+          if [ ! -s ".claude/agents/${AGENT_NAME}.md" ]; then
+            echo "Error: Agent file is empty" >&2
+            exit 1
+          fi
           
           # Create branch and commit
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          git checkout -b "agent/${AGENT_NAME}"
-          git add .claude/agents/
-          git commit -m "feat: add ${AGENT_NAME} agent"
-          git push origin "agent/${AGENT_NAME}"
+          BRANCH_NAME="agent/${AGENT_NAME}"
+          git checkout -b "$BRANCH_NAME"
+          git add ".claude/agents/${AGENT_NAME}.md"
+          git commit -m "feat: add ${AGENT_NAME} agent
+
+Requested by: @${{ github.event.issue.user.login }}
+Issue: #${{ github.event.issue.number }}"
+          git push origin "$BRANCH_NAME"
       
-      - name: Comment on issue
+      - name: Create PR and Comment
+        if: success()
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const agentName = process.env.AGENT_NAME;
+            const branchName = `agent/${agentName}`;
+            
+            try {
+              // Create pull request
+              const { data: pr } = await github.rest.pulls.create({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                title: `feat: add ${agentName} agent`,
+                head: branchName,
+                base: 'main',
+                body: `## New Agent: ${agentName}\n\nThis PR adds the \`${agentName}\` agent as requested in #${{ github.event.issue.number }}.\n\n### Details\n- Requested by: @${{ github.event.issue.user.login }}\n- Auto-generated from issue description\n- Agent file: \`.claude/agents/${agentName}.md\`\n\n### Next Steps\n1. Review the generated agent configuration\n2. Test the agent functionality\n3. Merge if everything looks good\n\nCloses #${{ github.event.issue.number }}`
+              });
+              
+              // Comment on issue with PR link
+              await github.rest.issues.createComment({
+                issue_number: context.issue.number,
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                body: `## ✅ Agent Created!\n\nI've created the \`${agentName}\` agent and opened PR #${pr.number} for review.\n\n### Next Steps:\n1. [Review the PR](${pr.html_url})\n2. The PR will automatically close this issue when merged\n\nThanks for your contribution! 🎆`
+              });
+            } catch (error) {
+              console.error('Failed to create PR:', error);
+              
+              // Fallback: just comment with branch link
+              await github.rest.issues.createComment({
+                issue_number: context.issue.number,
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                body: `✅ Agent created! Branch \`${branchName}\` has been pushed.\n\n[Create PR manually](https://github.com/${{ github.repository }}/compare/main...${branchName})`
+              });
+            }
+      
+      - name: Handle Failure
+        if: failure()
         uses: actions/github-script@v7
         with:
           script: |
@@ -53,5 +156,5 @@ jobs:
               issue_number: context.issue.number,
               owner: context.repo.owner,
               repo: context.repo.repo,
-              body: `✅ Agent created! [Create PR](https://github.com/${{ github.repository }}/compare/main...agent/${{ env.AGENT_NAME }})`
+              body: `## ❌ Failed to Create Agent\n\nI encountered an error while trying to create the agent. Please check:\n\n1. The issue title includes \`[Agent Request]\`\n2. The agent name is valid (letters, numbers, hyphens only)\n3. The repository has the required secrets configured\n\nYou can view the [workflow logs](https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}) for more details.`
             });

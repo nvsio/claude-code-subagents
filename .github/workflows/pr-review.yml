@@ -1,7 +1,7 @@
 name: PR Review
 
 on:
-  pull_request_target:
+  pull_request:
     types: [opened, synchronize]
 
 permissions:
@@ -10,39 +10,81 @@ permissions:
 jobs:
   review:
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     
     steps:
-      - uses: actions/checkout@v4
-        with:
-          ref: ${{ github.event.pull_request.head.sha }}
+      - name: Check API Key
+        id: check-key
+        run: |
+          if [ -z "${{ secrets.ANTHROPIC_API_KEY }}" ]; then
+            echo "has_key=false" >> $GITHUB_OUTPUT
+          else
+            echo "has_key=true" >> $GITHUB_OUTPUT
+          fi
       
       - name: Review with Claude
+        if: steps.check-key.outputs.has_key == 'true'
         env:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
         run: |
-          curl -X POST https://api.anthropic.com/v1/messages \
+          # Escape PR title for JSON
+          PR_TITLE=$(echo '${{ github.event.pull_request.title }}' | jq -Rs .)
+          
+          # Make API call with timeout and error handling
+          RESPONSE=$(curl -sS --fail --max-time 30 \
+            -X POST https://api.anthropic.com/v1/messages \
             -H "x-api-key: $ANTHROPIC_API_KEY" \
             -H "anthropic-version: 2023-06-01" \
             -H "content-type: application/json" \
-            -d '{
-              "model": "claude-3-5-sonnet-20241022",
-              "max_tokens": 2048,
-              "messages": [{
-                "role": "user",
-                "content": "Review this PR title and provide a brief, encouraging review (2-3 sentences max): ${{ github.event.pull_request.title }}"
+            -d "{
+              \"model\": \"claude-3-5-sonnet-20241022\",
+              \"max_tokens\": 512,
+              \"messages\": [{
+                \"role\": \"user\",
+                \"content\": \"Review this PR title and provide a brief, encouraging review (2-3 sentences max). Be positive and constructive: ${PR_TITLE}\"
               }]
-            }' | jq -r '.content[0].text' > review.txt
+            }" 2>&1) || {
+            echo "API call failed: $RESPONSE" >&2
+            echo "Thanks for your contribution! I'm having trouble connecting to review this right now, but your PR is appreciated!" > review.txt
+            exit 0
+          }
+          
+          # Extract review text
+          echo "$RESPONSE" | jq -r '.content[0].text // "Thanks for your contribution!"' > review.txt
+          
+          # Validate review file
+          if [ ! -s review.txt ]; then
+            echo "Thanks for your contribution!" > review.txt
+          fi
       
       - name: Post Review
+        if: always() && (steps.check-key.outputs.has_key == 'true' || github.event.pull_request.user.login == github.repository_owner)
         uses: actions/github-script@v7
         with:
           script: |
             const fs = require('fs');
-            const review = fs.readFileSync('review.txt', 'utf8');
+            let review = 'Thanks for your contribution!';
             
-            await github.rest.issues.createComment({
-              issue_number: context.issue.number,
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              body: `## 🤖 Claude Review\n\n${review}\n\n---\n*Automated review by Claude*`
-            });
+            try {
+              if (fs.existsSync('review.txt')) {
+                review = fs.readFileSync('review.txt', 'utf8').trim();
+              }
+            } catch (e) {
+              console.log('Could not read review file:', e.message);
+            }
+            
+            // Ensure review is not empty
+            if (!review) {
+              review = 'Thanks for your contribution!';
+            }
+            
+            try {
+              await github.rest.issues.createComment({
+                issue_number: context.issue.number,
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                body: `## 🤖 Claude Review\n\n${review}\n\n---\n*Automated review by Claude*`
+              });
+            } catch (error) {
+              console.log('Failed to post comment:', error.message);
+            }

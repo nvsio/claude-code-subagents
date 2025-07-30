@@ -14,10 +14,18 @@ permissions:
 jobs:
   heal:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     if: github.actor != 'github-actions[bot]'
     
     steps:
       - uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+      
+      - name: Setup Git
+        run: |
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
       
       - name: Fix Repository Structure
         run: |
@@ -33,27 +41,82 @@ jobs:
           python3 << 'EOF'
 import json
 import os
+import sys
 from pathlib import Path
 
-# Read agents from markdown files
-agents = []
-for md_file in Path(".claude/agents").glob("*.md"):
-    agents.append({
-        "name": md_file.stem,
-        "file": f".claude/agents/{md_file.name}"
-    })
-
-# Update agents.json
-with open(".claude/agents.json", "w") as f:
-    json.dump({"agents": agents}, f, indent=2)
-
-print(f"✅ Synced {len(agents)} agents")
+try:
+    # Read agents from markdown files
+    agents = []
+    agents_dir = Path(".claude/agents")
+    
+    if agents_dir.exists():
+        for md_file in agents_dir.glob("*.md"):
+            # Validate file is readable
+            try:
+                md_file.read_text()
+                agents.append({
+                    "name": md_file.stem,
+                    "file": f".claude/agents/{md_file.name}"
+                })
+            except Exception as e:
+                print(f"⚠️  Skipping {md_file.name}: {e}")
+    
+    # Sort agents by name for consistency
+    agents.sort(key=lambda x: x["name"])
+    
+    # Read existing agents.json to check if update needed
+    existing_content = None
+    if Path(".claude/agents.json").exists():
+        try:
+            with open(".claude/agents.json", "r") as f:
+                existing_content = json.load(f)
+        except:
+            pass
+    
+    new_content = {"agents": agents}
+    
+    # Only update if content changed
+    if existing_content != new_content:
+        with open(".claude/agents.json", "w") as f:
+            json.dump(new_content, f, indent=2)
+            f.write("\n")  # Add trailing newline
+        print(f"✅ Synced {len(agents)} agents")
+    else:
+        print(f"✅ No changes needed ({len(agents)} agents)")
+        sys.exit(0)
+        
+except Exception as e:
+    print(f"❌ Error: {e}")
+    sys.exit(1)
 EOF
       
+      - name: Check for changes
+        id: changes
+        run: |
+          if git diff --quiet; then
+            echo "changed=false" >> $GITHUB_OUTPUT
+          else
+            echo "changed=true" >> $GITHUB_OUTPUT
+          fi
+      
       - name: Create PR if needed
+        if: steps.changes.outputs.changed == 'true'
         uses: peter-evans/create-pull-request@v6
         with:
           commit-message: "fix: sync agents"
           title: "🔧 Self-heal: Sync agents"
-          body: "Automated sync of agent configurations"
+          body: |
+            ## 🤖 Automated Repository Healing
+            
+            This PR was automatically generated to sync agent configurations.
+            
+            ### Changes
+            - Updated `.claude/agents.json` to match markdown files in `.claude/agents/`
+            
+            ### Review
+            Please review the changes and merge if they look correct.
           branch: auto/heal-${{ github.run_number }}
+          delete-branch: true
+          labels: |
+            automated
+            self-heal
