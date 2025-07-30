@@ -40,8 +40,14 @@ jobs:
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
-          # Use a GitHub App or PAT to allow PR creation
+          # Use default token for checkout
           token: ${{ secrets.GITHUB_TOKEN }}
+      
+      - name: Configure git
+        run: |
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+          git config --global --add safe.directory ${{ github.workspace }}
       
       - name: Set maintenance mode
         id: mode
@@ -61,46 +67,34 @@ jobs:
         with:
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
           prompt: |
-            You are running as the repo-updater agent for the claude-code-subagents repository.
+            @agent-repo-updater perform maintenance on claude-code-subagents repository
             
-            Repository path: ${{ github.workspace }}
-            Maintenance mode: ${{ steps.mode.outputs.mode }}
-            Trigger: ${{ github.event_name }}
+            Mode: ${{ steps.mode.outputs.mode }}
+            Path: ${{ github.workspace }}
             
-            Your task is to maintain the health of this repository by:
+            LIGHT mode (${{ github.event_name == 'push' && 'triggered by push' || github.event_name == 'pull_request' && 'triggered by PR' || 'manual run' }}):
+            - Validate .claude/agents.json syntax
+            - Check markdown/JSON sync
+            - Report issues only if found
+            - EXIT IMMEDIATELY if healthy (save API credits)
             
-            For LIGHT mode (quick validation - 2-3 minutes max):
-            1. Check if .claude/agents.json is in sync with all markdown files in .claude/agents/
-            2. Validate basic JSON syntax
-            3. Report any critical errors found
-            4. Exit immediately if everything is valid
+            STANDARD mode:
+            - Fix any sync issues between .claude/agents/*.md and agents.json
+            - Validate all agent configurations
+            - Update outdated metadata
+            - Generate brief summary
             
-            For STANDARD mode (full maintenance - 5-10 minutes):
-            1. Everything from light mode
-            2. Fix any sync issues between markdown and JSON
-            3. Validate all agent configurations against schema
-            4. Update any outdated agent metadata
-            5. Fix formatting inconsistencies
+            DEEP mode:
+            - Everything in standard PLUS:
+            - Analyze agent effectiveness
+            - Suggest new agents based on gaps
+            - Optimize tool assignments
+            - Create comprehensive health report in sync-report.md
             
-            For DEEP mode (comprehensive analysis - 15-20 minutes):
-            1. Everything from standard mode
-            2. Analyze agent usage patterns
-            3. Suggest agent consolidations if overlap detected
-            4. Identify missing capabilities
-            5. Generate a comprehensive health report
-            6. Optimize agent configurations
-            
-            IMPORTANT:
-            - Only make changes if there are actual issues
-            - Do not make cosmetic changes
-            - Be efficient with API usage
-            - Exit early if no issues in light mode
-            - Create clear commit messages if changes are made
-            
-            Output a summary of what was checked and any changes made.
-          allowed_tools: "Task,Read,Write,MultiEdit,Glob,Grep,LS,Bash"
-          max_turns: "${{ steps.mode.outputs.mode == 'deep' && '20' || steps.mode.outputs.mode == 'standard' && '15' || '10' }}"
-          timeout_minutes: "${{ steps.mode.outputs.mode == 'deep' && '20' || steps.mode.outputs.mode == 'standard' && '10' || '5' }}"
+            CRITICAL: Be extremely efficient. The repo-updater agent should use its self-improvement capabilities to minimize API usage while maximizing value.
+          allowed_tools: "Task"
+          max_turns: "1"
+          timeout_minutes: "${{ steps.mode.outputs.mode == 'deep' && '15' || steps.mode.outputs.mode == 'standard' && '10' || '5' }}"
       
       - name: Check for changes
         id: changes
